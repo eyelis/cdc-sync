@@ -1,0 +1,56 @@
+graph TD
+    %% -- ACTEURS --
+    User((Utilisateur))
+
+    subgraph "Cluster Kubernetes"
+        
+        %% -- GATEWAY & SESSIONS --
+        subgraph "Ingress & Auth"
+            GW[<b>osm-gateway</b>]
+            Redis[(Cache Redis<br/>Sessions)]
+            GW <--> Redis
+        end
+
+        %% -- MONOLITHE --
+        subgraph "Legacy Domain"
+            LEG[<b>Monolithe Legacy</b>]
+            DB_LEG[(DB Legacy)]
+            LEG <--> DB_LEG
+        end
+
+        %% -- MICROSERVICES --
+        subgraph "New World"
+            MS[<b>Microservices</b><br/>(Catalogue/Billing)]
+            DB_NEW[(DB New)]
+            Outbox[<b>Table Outbox</b><br/>(Audit/Logs)]
+            MS <--> DB_NEW
+            MS <--> Outbox
+        end
+
+        %% -- SYNCHRONISATION (STRANGLER) --
+        subgraph "osm-sync (Strangler Hub)"
+            Pivot{<b>JSON PIVOT</b><br/>Format Neutre}
+            
+            %% Flux Legacy -> New (CDC)
+            CDC[Capture CDC<br/>Debezium/Kafka]
+            DB_LEG -- "Extraction Logs" --> CDC
+            CDC -- "Transformation" --> Pivot
+            Pivot -- "Injection" --> DB_NEW
+
+            %% Flux New -> Legacy (Event/Outbox)
+            EventProc[Event Processor<br/>Worker]
+            Outbox -- "Polling/Stream" --> EventProc
+            EventProc -- "Enrichissement" --> Pivot
+            Pivot -- "Update via API/DB" --> DB_LEG
+        end
+    end
+
+    %% -- CONNEXIONS EXTERNES --
+    User ==> GW
+    GW -.->|Bypass SAML / Sync| LEG
+    GW -->|OIDC JWT + Roles| MS
+    GW <--> uSignOn[uSignOn<br/>OIDC & SAML]
+
+    %% -- LÉGENDE STYLE --
+    style Pivot fill:#f96,stroke:#333,stroke-width:2px
+    style Outbox fill:#bbf,stroke:#333,stroke-dasharray: 5 5
