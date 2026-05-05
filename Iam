@@ -44,4 +44,23 @@ Service de parsing avec tests unitaires JUnit 5 (AssertJ).
 Script schema.sql en T-SQL (utilisant UNIQUEIDENTIFIER, DATETIME2 et BIT).
 Configuration application.yml incluant le dialecte SQLServerDialect."
 
-
+1. Modèle de Données & Identifiants :
+UserAccount :
+PK : id (UUID v7 séquentiel pour optimiser l'index clusterisé SQL Server).
+sub : String (Unique). Note : le sub uSignOn correspond au utCode de l'entreprise.
+legacyId : Long (ID technique du Monolithe Legacy pour le Bypass).
+Champs : firstname, lastname, email, isEnabled (BIT), esfCode.
+RefRole & RefPermission : PK de type String (Codes métiers ex: 'CAPTURE', 'EDIT_DOC'). Pas d'UUID ici.
+RolePermission : Table de jointure entre RefRole et RefPermission pour le mapping statique.
+LoginAudit : PK UUID v7, userId, timestamp (DATETIME2), ipAddress, rawRoles.
+2. Logique Métier :
+Parsing des Rôles : Reçoit une liste type ["CAPTURE-FR", "VALIDATE-IT"]. Utilise les Sequenced Collections de Java 25 pour splitter au - et regrouper les entités par rôle.
+Résolution : Pour chaque rôle métier, récupère les permissions via le mapping RolePermission.
+Performance : Utilise @Cacheable sur la résolution et @Async (configuré avec les Virtual Threads) pour l'audit.
+3. API & DTO :
+Endpoint : POST /v1/permissions/resolve.
+Le DTO de sortie (Record Java) doit contenir le profil utilisateur (incluant le legacyId), la map rolesToEntities et la liste fullPermissions.
+4. Livrables :
+Entités JPA, Services, Controller et Records.
+Script T-SQL complet (SQL Server 2022) avec index clusterisés sur les PK UUID.
+application.yml configuré pour le dialecte SQL Server et les UUID ordonnés."
