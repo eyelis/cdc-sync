@@ -64,3 +64,8 @@ Le DTO de sortie (Record Java) doit contenir le profil utilisateur (incluant le 
 Entités JPA, Services, Controller et Records.
 Script T-SQL complet (SQL Server 2022) avec index clusterisés sur les PK UUID.
 application.yml configuré pour le dialecte SQL Server et les UUID ordonnés."
+
+Volet DDD Identité : 
+​Pour être sûr que Junie applique ce principe, ajoute cette consigne :
+​"L'identité des agrégats (UUID) doit être gérée par le Domaine. Les entités du domaine ne doivent pas s'appuyer sur les mécanismes de génération automatique de la base de données (pas de Identity ou de Default Value SQL). Le Domaine doit être responsable de l'instanciation de ses UUID (v7 de préférence) pour garantir que l'objet est complet dès sa création."
+
