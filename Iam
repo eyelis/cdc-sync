@@ -1,0 +1,47 @@
+Création du module osm-iam (Optimisé SQL Server 2022)
+Contexte : "Junie, tu es une experte en architecture microservices. Je développe le module osm-iam qui centralise l'autorisation pour une migration Strangler. Seule la Gateway appelle ce module. Le Legacy reste passif et sera alimenté par un filtre de Bypass utilisant les données de ce service.
+1. Stack Technique (Edge Versions)
+Runtime : Java 25 (optimise pour les Virtual Threads).
+Framework : Spring Boot 3.5.0.
+Persistance : Spring Data JPA / Hibernate 7.
+Base de données : SQL Server 2022.
+Utilitaires : Lombok 1.18.40 et MapStruct 1.6+.
+2. Stratégie d'Identifiants (Optimisation Index Clusterisés)
+UUID v7 / Sequential : Pour les entités UserAccount et LoginAudit, utilise des UUID mappés sur le type SQL Server UNIQUEIDENTIFIER.
+IMPORTANT : Pour éviter la fragmentation des index clusterisés (Page Splits) sur SQL Server, configure Hibernate pour générer des UUID séquentiels (ordonnés chronologiquement), simulant le comportement de NEWSEQUENTIALID().
+Réconciliation : Garde un champ legacyId (Long) dans UserAccount pour que le filtre de Bypass puisse identifier l'utilisateur dans le Monolithe.
+3. Logique de Parsing des Rôles "Scopés"
+uSignOn envoie les rôles au format : ACTION-ENTITE (ex: CAPTURE-FR, CAPTURE-IT).
+Crée un service de parsing qui splitte chaque chaîne au tiret -.
+Règle : Regroupe les entités par rôle métier (ex: CAPTURE -> [FR, IT]). Utilise les Sequenced Collections de Java 25.
+4. API de Résolution (POST /v1/permissions/resolve)
+Entrée : sub (ID uSignOn) et List<String> des rôles bruts.
+Traitement : Récupération du profil, parsing des rôles et résolution des permissions via un mapping statique (Table RolePermission).
+Audit : Enregistre la connexion de manière asynchrone via un AsyncTaskExecutor utilisant les Virtual Threads.
+Cache : @Cacheable sur la résolution pour minimiser les accès disque.
+5. Format de Sortie (DTO Bypass-Ready)
+
+{
+  "userId": "internal-legacy-id-99",
+  "identity": { 
+      "firstname": "Jean", "lastname": "Dupont", 
+      "utCode": "UC01", "esfCode": "ESF44", 
+      "isExpired": false 
+  },
+  "authorizations": [
+    {
+      "role": "CAPTURE",
+      "entities": ["FR", "IT"],
+      "permissions": ["PERM_1", "PERM_2"]
+    }
+  ],
+  "globalPermissions": ["PERM_1", "PERM_2", "PERM_3"]
+}
+
+6. Livrables Attendus
+Entités JPA avec configuration UUID séquentiel.
+Service de parsing avec tests unitaires JUnit 5 (AssertJ).
+Script schema.sql en T-SQL (utilisant UNIQUEIDENTIFIER, DATETIME2 et BIT).
+Configuration application.yml incluant le dialecte SQLServerDialect."
+
+
