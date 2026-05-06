@@ -33,22 +33,30 @@ Création du module osm-iam (DDD / Hexagonal)
 Contrat d'Entrée (Gateway ➔ osm-iam)
 "L'API reçoit un JSON simplifié extrait du token uSignOn par la Gateway.
 Format de la requête (ResolveRequest) :"
+
 {
-  "sub": "UTXXXX",
-  "authorizations": [
-    "CAPTURE-FR",
-    "CAPTURE-IT",
-    "VALIDATE-ES",
-    "no_profile"
-  ],
-  "context": {
+  "utcode": "UTXXXX",
+  "authorizations": ["CAPTURE-FR", "VALIDATE-IT"],
+  "identityUpdate": {
+    "firstName": "John",
+    "lastName": "DOE",
     "email": "john.doe@ca-cib.com",
+    "entity": "CA-CIB France",
+    "esfCode": "35XX",
+    "businessLine": "IT Operations"
+  },
+  "context": {
     "amr": ["kerberos"],
-    "esfcode": "35XX"
-
-
+    "ip": "10.2.3.4"
   }
 }
+
+avec cette input :
+Rechercher l'utilisateur via son utcode.
+Mettre à jour (Upsert) les champs firstName, lastName, entity, etc., dans la table UserAccountEntity (via MapStruct).
+Calculer les permissions.
+Retourner le tout.
+  
 
 
 Contrat de Sortie (osm-iam ➔ Gateway/Bypass)
@@ -82,4 +90,8 @@ Format de la réponse (ResolveResponse) :"
 Instruction sur le JWT
 "Note : Bien que l'échange entre la Gateway et osm-iam se fasse en JSON (REST), prévois une couche de service capable de signer cette réponse dans un JWT si la Gateway doit transmettre ces permissions de manière sécurisée au reste du système. Utilise nimbus-jose-jwt pour la génération."
 
-
+Gestion de l'Audit (LoginAudit) :
+L'audit doit être déclenché automatiquement lors de chaque appel à resolve.
+Input interne : Le LoginAudit du domaine doit être construit à partir du sub, des rawAuthorizations, de l'information amr (Kerberos/autre) et de l'adresse IP.
+Exécution asynchrone : Utilise l'annotation @Async sur le service d'audit. Configure Spring pour utiliser un AsyncTaskExecutor basé sur un Virtual Thread Per Task Executor (Executors.newVirtualThreadPerTaskExecutor()).
+Résilience : L'échec de l'écriture de l'audit ne doit jamais bloquer la réponse de résolution des permissions (utilise un bloc try-catch autour de la persistence de l'audit)."
