@@ -1,0 +1,25 @@
+Schéma SQL Server & Stratégie de Test JPA
+"Junie, pour la persistance du module osm-iam, applique les consignes suivantes :
+1. Script de Création (T-SQL / SQL Server 2022)
+Génère un script schema.sql robuste :
+Schéma dédié : Crée et utilise un schéma nommé iam (ex: iam.UserAccount).
+Types de données :
+UNIQUEIDENTIFIER pour toutes les PK UUID.
+DATETIME2 pour les timestamps.
+BIT pour les booléens.
+NVARCHAR pour le support Unicode sur les noms et emails.
+Contraintes : Ajoute les FOREIGN KEY explicitement entre les tables de jointure et les référentiels.
+Indexation : Assure-toi que les Clés Primaires UUID sont bien définies comme PRIMARY KEY CLUSTERED pour profiter de la nature séquentielle de nos UUID v7.
+2. Stratégie de Test (Testcontainers)
+Je refuse l'utilisation de H2 pour les tests d'intégration. Configure l'environnement de test ainsi :
+Testcontainers : Utilise l'image mcr.microsoft.com/mssql/server:2022-latest.
+Configuration JPA Test :
+Crée une classe de base BaseIntegrationTest utilisant @ServiceConnection (Spring Boot 3.1+) pour configurer automatiquement la DataSource à partir du container.
+Utilise @DataJpaTest avec la désactivation de l'auto-configuration de la base de données de remplacement (@AutoConfigureTestDatabase(replace = NONE)).
+Cas de tests à couvrir :
+L'insertion d'un UserAccount avec son UUID généré par le domaine.
+La persistance de l'audit en mode asynchrone (Virtual Threads).
+La récupération d'un utilisateur par son sub.
+3. Mappage MapStruct (Upsert Logic)
+Génère le mapper UserAccountMapper qui gère la logique de mise à jour du profil (identityUpdate) :
+Si l'entité existe déjà, le mapper doit mettre à jour les champs (firstName, lastName, email, etc.) sans modifier l'ID technique interne ni la date de création originelle."
