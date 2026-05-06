@@ -1,0 +1,85 @@
+Création du module osm-iam (DDD / Hexagonal)
+​Contexte : "Junie, tu es une experte en architecture logicielle. Tu dois générer le microservice osm-iam (Java 25, Spring Boot 3.5.0, SQL Server 2022). Ce service est un moteur d'autorisation appelé par une API Gateway. Il doit fournir un contexte riche pour alimenter un filtre de 'Bypass' vers un monolithe Legacy sans modifier ce dernier.
+​1. Architecture Hexagonale & DDD
+​Structure le projet rigoureusement :
+​domain.model : Modèles purs (Records/Classes) : UserAccount, LoginAudit, RefRole, RefPermission.
+​Règle d'or : L'identité (UUID v7) est générée par le domaine (utilise com.fasterxml.uuid:java-uuid-generator).
+​domain.ports : Interfaces d'entrée (ResolveAuthorizationUseCase) et de sortie (UserAccountRepositoryPort, AuditPublisherPort).
+​application.usecase : Orchestration de la logique sans détails techniques.
+​infrastructure.adapters :
+​Inbound : IamController (reçoit le JSON simplifié de la Gateway).
+​Outbound : Persistence JPA/Hibernate 7 avec Mappers MapStruct pour convertir les Entities (SQL Server) en objets Domain.
+​2. Modèle de Données & Spécificités SQL Server 2022
+​UserAccount : PK UUID v7, sub (identifiant UT unique), legacyId (Long), utCode, esfCode, isEnabled (BIT).
+​RefRole / RefPermission : Utilise des codes String comme PK (ex: CAPTURE, VIEW_DOC).
+​LoginAudit : PK UUID v7, userId, timestamp (DATETIME2), amr (ex: kerberos).
+​Optimisation : Configure Hibernate 7 pour que les UUID v7 soient stockés en UNIQUEIDENTIFIER tout en conservant l'ordre de tri pour éviter la fragmentation des index clusterisés.
+​3. Logique Métier (Parsing uSignOn)
+​Implémente un RoleScopeParser dans le domaine qui transforme une liste brute ["CAPTURE-FR", "CAPTURE-IT", "VALIDATE-ES"] en une structure groupée : CAPTURE -> [FR, IT], VALIDATE -> [ES].
+​Utilise les Sequenced Collections de Java 25 pour le traitement.
+​Résous les permissions finales via la table de jointure RolePermission.
+​4. API & Performance
+​Endpoint : POST /v1/permissions/resolve (Entrée : sub et List<String> authorizations).
+​Sortie : Un Record JSON complet incluant identity, authorizations (roles/entities/perms) et globalPermissions.
+​Virtual Threads : Configure l'audit (@Async) pour s'exécuter sur des Threads Virtuels.
+​Cache : Utilise @Cacheable pour la résolution des droits.
+​5. Livrables
+​Arborescence complète des packages.
+​Code des entités domaine, des ports et des adaptateurs.
+​Configuration application.yml (Dialecte SQL Server, UUID strategy).
+​Script T-SQL (SQL Server 2022) avec index clusterisés sur les PK."
+
+
+Contrat d'Entrée (Gateway ➔ osm-iam)
+"L'API reçoit un JSON simplifié extrait du token uSignOn par la Gateway.
+Format de la requête (ResolveRequest) :"
+{
+  "sub": "UTXXXX",
+  "authorizations": [
+    "CAPTURE-FR",
+    "CAPTURE-IT",
+    "VALIDATE-ES",
+    "no_profile"
+  ],
+  "context": {
+    "email": "john.doe@ca-cib.com",
+    "amr": ["kerberos"],
+    "esfcode": "35XX"
+
+
+  }
+}
+
+
+Contrat de Sortie (osm-iam ➔ Gateway/Bypass)
+"Le module doit retourner un objet riche permettant au filtre de Bypass d'injecter les données dans le Monolithe.
+Format de la réponse (ResolveResponse) :"
+{
+  "userId": "internal-uuid-v7",
+  "legacyId": 99876, 
+  "identity": {
+    "firstname": "John",
+    "lastname": "DOE",
+    "utcode": "UTXXXX",
+    "email": "john.doe@ca-cib.com",
+    "isEnabled": true
+  },
+  "authorizations": [
+    {
+      "role": "CAPTURE",
+      "entities": ["FR", "IT"],
+      "permissions": ["PERM_CREATE", "PERM_UPDATE"]
+    },
+    {
+      "role": "VALIDATE",
+      "entities": ["ES"],
+      "permissions": ["PERM_APPROVE"]
+    }
+  ],
+  "globalPermissions": ["PERM_CREATE", "PERM_UPDATE", "PERM_APPROVE", "PERM_AUDIT_VIEW"]
+}
+
+Instruction sur le JWT
+"Note : Bien que l'échange entre la Gateway et osm-iam se fasse en JSON (REST), prévois une couche de service capable de signer cette réponse dans un JWT si la Gateway doit transmettre ces permissions de manière sécurisée au reste du système. Utilise nimbus-jose-jwt pour la génération."
+
+
