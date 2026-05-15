@@ -1,0 +1,37 @@
+
+Implémentation du Session Bridge Gateway
+​Objet : Création du UserSessionBridgeFilter pour Spring Cloud Gateway (Migration Strangler Pattern).
+​Contexte :
+Nous migrons une application Legacy (SAML) vers une architecture microservices. uSignOn ne permettant pas la coexistence SAML/OIDC, nous adoptons une stratégie de "Token Mediation". Le Legacy reste maître de l'authentification (Session JSESSIONID). La Gateway doit transformer cette session en JWT pour les services migrés.
+​Tâches à réaliser :
+​1. Configuration du Cache Local
+​Utiliser Caffeine Cache pour stocker la correspondance : JSESSIONID (String) -> UserSessionContext (Objet).
+​TTL de l'entrée de cache : 60 secondes (configurable).
+​Capacité max : 10 000 entrées.
+​2. Implémentation du UserSessionBridgeFilter (GlobalFilter)
+​Ce filtre doit s'appliquer uniquement sur les routes marquées comme "migrées" (ex: path /api/**) :
+​Extraction : Récupérer le cookie JSESSIONID de la requête entrante.
+​Vérification Cache : * Si présent dans Caffeine : Passer à l'étape 4.
+​Si absent : Passer à l'étape 3.
+​Introspection Legacy : * Appeler l'endpoint GET ${legacy.url}/api/session/introspect en transmettant le cookie JSESSIONID.
+​Le JSON de retour contient : utcode, displayName, roles, permissions, entity.
+​Si le Legacy répond 200 OK, stocker l'objet dans Caffeine.
+​Si le Legacy répond 401 ou 403, rejeter la requête immédiatement.
+​Génération du JWT (Minting) :
+​Générer un JWT court (TTL 2 minutes).
+​Signature : RS256 (prévoir une paire de clés privées/publiques).
+​Claims requis : sub (utcode), name, roles, permissions, siteId.
+​Sécurité : Ajouter un claim sid_hash (SHA-256 du JSESSIONID) pour l'adhérence session/token.
+​Injection : Ajouter le header Authorization: Bearer <JWT> à la requête transmise au service aval.
+​3. Mode Développement (local-dev)
+​Si le profil Spring dev est actif, permettre de bypasser l'introspection.
+​Si un header X-Dev-User est présent, simuler une introspection réussie pour cet utilisateur sans appeler le Legacy.
+​4. Sécurité et Robustesse
+​Signature : Implémenter un endpoint /well-known/jwks.json sur la Gateway pour exposer la clé publique aux services aval (ex: Catalog).
+​Éviction : Si la Gateway détecte un appel vers l'URL de logout du Legacy, invalider l'entrée correspondante dans le cache Caffeine.
+​Retry : En cas d'erreur 401 venant du service aval (JWT expiré entre-temps), forcer une ré-introspection.
+​Livrables attendus :
+​Le code Java du filtre UserSessionBridgeFilter.
+​Le record/DTO UserSessionContext.
+​La configuration application.yml avec les paramètres de TTL et les clés JWT.
+​L'endpoint JWKS pour l'exposition de la clé publique.
